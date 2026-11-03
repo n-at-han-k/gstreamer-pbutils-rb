@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+
+# TEST(1)                      General Commands Manual                   TEST(1)
+#
+# NAME
+#      bin/test — run the suite
+#
+# DESCRIPTION
+#      Runs sus over the suite.  There is nothing to compile: the binding is
+#      GObjectIntrospection::Loader reading GstPbutils-1.0.typelib at require time.
+#
+#      What it does need is that typelib on GI_TYPELIB_PATH, which the dev
+#      shell in flake.nix provides.  Outside it, install your distribution's
+#      package (see README.md) and point GI_TYPELIB_PATH at the directory
+#      holding GstPbutils-1.0.typelib.
+#
+# SEE ALSO
+#      sus(1), flake.nix
+#
+# gstreamer_pbutils                        November 3, 2026                          TEST(1)
+
+set -o errexit
+set -o nounset
+
+root="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$root"
+
+bundle exec sus "$@"

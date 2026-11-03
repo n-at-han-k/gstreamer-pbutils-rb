@@ -1,0 +1,115 @@
+# Runs the suite in the same dev shell a developer gets.
+#
+# This gem is pure Ruby, so there is nothing to cross-compile and no
+# per-platform matrix. That matrix is what this workflow replaces: the Rust
+# binding that used to live here could not ship, because
+# `pkg-config --libs --cflags glib-2.0` is not available inside rb-sys-dock and
+# every gir-generated crate needs it.
+#
+# What this does need is gst-plugins-base's typelib, GStreamer core's typelib
+# under it, a plugin registry, and the glib those typelibs were built against
+# -- get the last from a different place and GObject's types are registered
+# twice in one process, which fails as
+# `cannot register existing type 'GTlsCertificate'`.
+#
+# flake.nix already pins all of that and puts it on GI_TYPELIB_PATH and
+# GST_PLUGIN_SYSTEM_PATH_1_0. So CI runs through `nix develop` rather than
+# installing gems and apt packages and hoping the versions line up: the shell
+# is the contract, and CI checking a different environment than the one people
+# develop in is how an environment bug reaches a release.
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      # The flake evaluates `self`, so the files have to be in git's index.
+      # A checkout satisfies that; this is the guard for anything generated.
+      - name: Check the tree is what the flake will see
+        run: git status --porcelain
+
+      - name: Run the suite
+        run: nix develop --command bin/test
+
+      # The gem must stay pure Ruby: no extension of its own, and no
+      # resurrection of the Rust dependencies that were removed. Checked
+      # against the built artefact rather than the working tree, because what
+      # ships is what matters.
+      #
+      # Then install that artefact into an empty GEM_HOME. This is the claim
+      # worth proving rather than asserting, and note what it proves and what
+      # it does not: installing *does* compile C, because glib2 and
+      # gobject-introspection both declare spec.extensions. What it shows is
+      # that this gem adds no build step of its own on top of those two -- and
+      # those two are what every ruby-gnome application already has, since
+      # gtk4 depends on them.
+      #
+      # It runs outside `nix develop` for the install itself, because the dev
+      # shell's ruby comes from bundlerEnv with GEM_HOME baked into the
+      # read-only store; a fresh GEM_HOME there fails on permissions and proves
+      # nothing either way.
+      - name: The packaged gem is pure Ruby
+        run: |
+          nix develop --command bash -lc '
+            set -euo pipefail
+            gem build gstreamer_pbutils.gemspec
+            contents=$(tar -xOf gstreamer_pbutils-*.gem data.tar.gz | tar -tzf -)
+            echo "$contents"
+            if echo "$contents" | grep -qE "(^|/)ext/|\.rs$|Cargo\.(toml|lock)"; then
+              echo "::error::the packaged gem carries native-extension sources"; exit 1
+            fi
+            ruby -e "
+              spec = Gem::Specification.load(\"gstreamer_pbutils.gemspec\")
+              abort \"gemspec declares extensions: #{spec.extensions}\" unless spec.extensions.empty?
+              # An equality check rather than a grep for the Rust gems,
+              # because the thing worth guarding is narrower than \"no Rust\":
+              # this gem must not grow a dependency that compiles. In
+              # particular not the ruby-gnome gstreamer gem -- the namespace
+              # does need gst_init, and GstPbutils::Loader calls it through
+              # the Gst-1.0 typelib precisely so that dependency is not
+              # needed. See the README.
+              names = spec.runtime_dependencies.map(&:name).sort
+              abort \"unexpected runtime deps: #{names}\" unless names == [\"gem_kit\", \"gobject-introspection\"]
+              puts \"packaged gem is pure Ruby; runtime deps: #{names.join(\", \")}\"
+            "
+          '
+
+      - name: Install the built gem into an empty GEM_HOME
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          # What glib2 and gobject-introspection compile against. This is the
+          # honest cost of installing: two ruby-gnome extensions, not three,
+          # and not a Rust toolchain.
+          sudo apt-get install -y --no-install-recommends \
+            build-essential ruby ruby-dev pkg-config \
+            libglib2.0-dev libgirepository1.0-dev \
+            gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0 \
+            gstreamer1.0-plugins-base
+          export GEM_HOME="$RUNNER_TEMP/gemhome"
+          export PATH="$GEM_HOME/bin:$PATH"
+          gem install --no-document ./gstreamer_pbutils-*.gem
+          ruby -e 'require "gstreamer_pbutils"
+                   abort "namespace did not load" unless GstPbutils.const_defined?(:Discoverer)
+                   puts "GstPbutils loaded: #{GstPbutils.plugins_base_version_string}"'

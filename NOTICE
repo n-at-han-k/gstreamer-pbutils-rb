@@ -1,0 +1,42 @@
+GstreamerPbutils for Ruby
+Copyright 2026 General Intelligence Systems
+
+This product includes no software developed by the GStreamer project. It reads
+a machine-readable description of it at runtime.
+
+--------------------------------------------------------------------------------
+gst-plugins-base
+--------------------------------------------------------------------------------
+
+The library this gem binds is libgstpbutils, from gst-plugins-base.
+
+  https://gitlab.freedesktop.org/gstreamer/gstreamer
+  Copyright 1999-2026 the GStreamer contributors
+  Licensed under the GNU Lesser General Public License, version 2.1 or later
+
+Nothing is linked and nothing is copied. This gem has no compiled extension:
+GObjectIntrospection::Loader opens GstPbutils-1.0.typelib at require time and
+defines Ruby classes from what it finds there. The typelib is a description of
+the library's API, it belongs to the host's gst-plugins-base installation, and
+it is not distributed with this gem. No part of gst-plugins-base is copied into
+this repository or into a built gem, and no header, source file or declaration
+of it is reproduced here.
+
+The LGPL applies to that library, not to this work. Loading an
+LGPL-2.1-or-later library's introspection data from an Apache-2.0 work is
+further from the licence's reach than the dynamic linkage it already permits.
+
+--------------------------------------------------------------------------------
+ruby-gnome
+--------------------------------------------------------------------------------
+
+The loader in lib/gstreamer_pbutils/loader.rb is written on the model of
+ruby-gnome's own GObject Introspection loaders -- gtksourceview5 and libsecret
+in particular -- and runs on ruby-gnome's gobject-introspection gem.
+
+  https://github.com/ruby-gnome/ruby-gnome
+  Copyright 2003-2026 the Ruby-GNOME Project Team
+  Licensed under the GNU Lesser General Public License, version 2.1 or later
+
+ruby-gnome is a gem dependency, resolved by RubyGems at install time. No part
+of it is copied into this repository or into a built gem.
