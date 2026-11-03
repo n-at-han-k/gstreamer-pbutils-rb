@@ -129,4 +129,20 @@ describe GstPbutils do
       end
     end
   end
+
+  it "also defines GstTag from the same package" do
+    # GstTag-1.0 ships alongside GstPbutils's typelib, so this gem covers it
+    # too. Asserted because a silent regression here would quietly reopen a
+    # gap on the Bindings board.
+    expect(Object.const_defined?(:GstTag)).to be == true
+    expect(GstTag.constants.size).to be > 5
+  end
+
+  it "also defines GstVideo from the same package" do
+    # GstVideo-1.0 ships alongside GstPbutils's typelib, so this gem covers it
+    # too. Asserted because a silent regression here would quietly reopen a
+    # gap on the Bindings board.
+    expect(Object.const_defined?(:GstVideo)).to be == true
+    expect(GstVideo.constants.size).to be > 5
+  end
 end

@@ -4,5 +4,5 @@
 # Copyright, 2026, by General Intelligence Systems.
 
 module GstreamerPbutils
-  VERSION = "1.0.0"
+  VERSION = "1.1.0"
 end

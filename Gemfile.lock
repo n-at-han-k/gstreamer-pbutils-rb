@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    gstreamer_pbutils (1.0.0)
+    gstreamer_pbutils (1.1.0)
       gem_kit (~> 0.2)
       gobject-introspection (~> 4.3)
 

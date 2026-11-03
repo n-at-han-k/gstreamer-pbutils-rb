@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-03
+
+### Added
+
+- GstTag and GstVideo, defined from the typelibs that ship in the same package as this
+  gem's own. They need the same `gst_init` and the same search path, so they
+  are loaded here rather than given gems of their own -- which is what
+  ruby-gnome's gstreamer gem does for GstBase, GstController and GstAudio.
+  This closes the GstTag and GstVideo gaps on the project's Bindings board.
+
 ## [1.0.0] - 2026-11-03
 
 ### Added

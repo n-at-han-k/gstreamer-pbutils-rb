@@ -77,10 +77,12 @@ module GstPbutils
     end
 
     def require_libraries
-      # Nothing yet. Hand-written Ruby that improves on what the typelib gives
-      # -- an each that yields, a to_s, a keyword-argument constructor -- goes
-      # in files required from here, which is the convention ruby-gnome uses
-      # for exactly that purpose.
+      # GstTag, GstVideo ship in the same package as GstPbutils and need the same
+      # gst_init, so they are brought up here rather than given gems of their
+      # own. This is what ruby-gnome's gstreamer gem does for GstBase,
+      # GstController and GstAudio.
+      require_relative "gsttag"
+      require_relative "gstvideo"
     end
   end
 end
