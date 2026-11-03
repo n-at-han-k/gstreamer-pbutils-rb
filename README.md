@@ -150,6 +150,21 @@ nix develop
 bin/test
 ```
 
+## Releasing
+
+```sh
+gem kit release
+```
+
+That is the whole thing. It gates on the changelog having an entry for this
+version, on no deprecation deadline coming due, and on a clean working tree;
+then builds, pushes and tags.
+
+There is nothing to wait for in CI. This gem is pure Ruby, so `gem build`
+produces one `gstreamer_pbutils-X.Y.Z.gem` that is the same artefact wherever it is built —
+no extension, no per-platform gems, nothing for a workflow to hand back.
+
+
 ## Licence
 
 Apache-2.0. gst-plugins-base itself is LGPL-2.1-or-later; this gem links

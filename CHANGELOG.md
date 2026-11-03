@@ -40,3 +40,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `ext/`, `Cargo.toml`, `Cargo.lock`, the cross-compile workflow, and the
   `rb_sys` and `rake-compiler` dependencies.
+- `bin/release-gem`. It existed because releasing a Rust gem meant publishing a
+  source gem plus one precompiled gem per platform, downloaded from the Cross
+  Compile workflow's artifacts. There is nothing to compile here, so there is
+  one gem and one push, which is exactly what `gem kit release` does. The
+  script added only a check that the local version was ahead of RubyGems, and
+  `gem push` already refuses a version that has been pushed.
