@@ -56,19 +56,6 @@ jobs:
       # resurrection of the Rust dependencies that were removed. Checked
       # against the built artefact rather than the working tree, because what
       # ships is what matters.
-      #
-      # Then install that artefact into an empty GEM_HOME. This is the claim
-      # worth proving rather than asserting, and note what it proves and what
-      # it does not: installing *does* compile C, because glib2 and
-      # gobject-introspection both declare spec.extensions. What it shows is
-      # that this gem adds no build step of its own on top of those two -- and
-      # those two are what every ruby-gnome application already has, since
-      # gtk4 depends on them.
-      #
-      # It runs outside `nix develop` for the install itself, because the dev
-      # shell's ruby comes from bundlerEnv with GEM_HOME baked into the
-      # read-only store; a fresh GEM_HOME there fails on permissions and proves
-      # nothing either way.
       - name: The packaged gem is pure Ruby
         run: |
           nix develop --command bash -lc '
@@ -95,21 +82,38 @@ jobs:
             "
           '
 
-      - name: Install the built gem into an empty GEM_HOME
+      # Install that artefact from scratch. This is the claim worth proving
+      # rather than asserting, and note what it proves and what it does not:
+      # installing *does* compile C, because glib2 and gobject-introspection
+      # both declare spec.extensions. What it shows is that this gem adds no
+      # build step of its own on top of those two -- and those two are what
+      # every ruby-gnome application already has, since gtk4 depends on them.
+      #
+      # It runs in the `install-check` dev shell rather than the default one
+      # because the default shell's ruby comes from bundlerEnv, with the bundle
+      # already resolved and GEM_HOME inside the read-only store; a fresh
+      # GEM_HOME there fails on permissions and proves nothing either way.
+      # `install-check` is a plain ruby with a compiler, pkg-config and the
+      # -dev inputs those two extensions need.
+      #
+      # It used to apt-get that toolchain instead. The flake is better for a
+      # reason beyond tidiness: letting CI resolve its own glib through
+      # Ubuntu's packages is how the `cannot register existing type` trap gets
+      # back in by the side door, since the typelib and the glib the gems
+      # compile against then come from two different builds. The flake is the
+      # only place that can say "one nixpkgs" and have it stay said. It also
+      # makes this check runnable locally, with the same command.
+      - name: Install the built gem from scratch
         run: |
-          set -euo pipefail
-          sudo apt-get update
-          # What glib2 and gobject-introspection compile against. This is the
-          # honest cost of installing: two ruby-gnome extensions, not three,
-          # and not a Rust toolchain.
-          sudo apt-get install -y --no-install-recommends \
-            build-essential ruby ruby-dev pkg-config \
-            libglib2.0-dev libgirepository1.0-dev \
-            gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0 \
-            gstreamer1.0-plugins-base
-          export GEM_HOME="$RUNNER_TEMP/gemhome"
-          export PATH="$GEM_HOME/bin:$PATH"
-          gem install --no-document ./gstreamer_pbutils-*.gem
-          ruby -e 'require "gstreamer_pbutils"
-                   abort "namespace did not load" unless GstPbutils.const_defined?(:Discoverer)
-                   puts "GstPbutils loaded: #{GstPbutils.plugins_base_version_string}"'
+          nix develop .#install-check --command bash -lc '
+            set -euo pipefail
+            export GEM_HOME="$RUNNER_TEMP/gemhome"
+            export PATH="$GEM_HOME/bin:$PATH"
+            gem install --no-document ./gstreamer_pbutils-*.gem
+            # Out of the source tree, so lib/ on the load path cannot stand in
+            # for the installed gem and make this pass for the wrong reason.
+            cd "$RUNNER_TEMP"
+            ruby -e "require \"gstreamer_pbutils\"
+                     abort \"namespace did not load\" unless GstPbutils.const_defined?(:Discoverer)
+                     puts \"GstPbutils loaded: #{GstPbutils.plugins_base_version_string}\""
+          '

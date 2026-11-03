@@ -92,6 +92,71 @@
             export RUBYLIB="$PWD/lib''${RUBYLIB:+:$RUBYLIB}"
           '';
         };
+
+        # A second shell for one job the default shell cannot do: install the
+        # built gem from scratch and prove it needs no toolchain of its own.
+        #
+        # The default shell's ruby comes from bundlerEnv, with the bundle
+        # already resolved and GEM_HOME inside the read-only store, so
+        # `gem install` there fails on permissions and proves nothing either
+        # way. This one is a plain ruby with a writable GEM_HOME, which is the
+        # situation a user installing the gem is actually in.
+        #
+        # It is deliberately a devShell rather than an apt-get in the workflow.
+        # CI resolving its own glib through Ubuntu's packages is how the
+        # `cannot register existing type` trap gets back in by the side door:
+        # the typelib and the glib the gems compile against have to come from
+        # one place, and the only way to say "one place" and have it stay true
+        # is to say it in the flake. It also means this check is runnable
+        # locally, with the same command CI runs.
+        #
+        # Unlike the default shell, this one does carry a compiler, pkg-config
+        # and -dev inputs -- not for this gem, which compiles nothing, but for
+        # glib2 and gobject-introspection, which are native extensions. That
+        # cost is the honest claim the check exists to make: two ruby-gnome
+        # extensions, which every ruby-gnome application already builds, and
+        # nothing else. Not a Rust toolchain.
+        devShells.install-check = pkgs.mkShell {
+          nativeBuildInputs = with pkgs; [
+            ruby_3_4
+            pkg-config
+            gcc
+            gnumake
+          ];
+
+          buildInputs = with pkgs; [
+            # The pkg-config setup hook puts these packages' `dev` outputs on
+            # PKG_CONFIG_PATH, which is what the two extensions look for:
+            # glib-2.0.pc for glib2 and gobject-introspection-1.0.pc for
+            # gobject-introspection. This is the `pkg-config --libs --cflags
+            # glib-2.0` that rb-sys-dock could not provide, which is why the
+            # Rust binding could not ship from there.
+            glib
+            gobject-introspection
+
+            # glib-2.0.pc's `Requires.private: sysprof-capture-4, libpcre2-8`.
+            # Real pkg-config only follows Requires.private for a static link,
+            # but glib2's extconf uses the `pkg-config` *gem*, a pure-Ruby
+            # reimplementation that resolves them unconditionally -- so both
+            # have to be on PKG_CONFIG_PATH or the build dies with
+            # `.pc doesn't exist: <sysprof-capture-4>` from pkg-config.rb,
+            # which reads like a missing library and is not one. The .pc lives
+            # in `libsysprof-capture`, not in `sysprof`.
+            libsysprof-capture
+            pcre2
+
+            gst_all_1.gst-plugins-base
+            gst_all_1.gstreamer
+          ];
+
+          shellHook = /* bash */ ''
+            export GI_TYPELIB_PATH="${typelibPath}''${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
+            export GST_PLUGIN_SYSTEM_PATH_1_0="${pluginPath}''${GST_PLUGIN_SYSTEM_PATH_1_0:+:$GST_PLUGIN_SYSTEM_PATH_1_0}"
+
+            export LANG="''${LANG:-C.UTF-8}"
+            export LC_ALL="''${LC_ALL:-$LANG}"
+          '';
+        };
       }
     );
 }

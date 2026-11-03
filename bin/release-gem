@@ -4,57 +4,79 @@
 # Released under the Apache License, Version 2.0.
 # Copyright, 2026, by General Intelligence Systems.
 
-# RELEASE-GEM(1)                     General Commands Manual                   RELEASE-GEM(1)
+# RELEASE-GEM(1)                  General Commands Manual               RELEASE-GEM(1)
 #
 # NAME
 #      bin/release-gem — publish this version
 #
 # SYNOPSIS
-#      bin/release-gem [gem kit release arguments ...]
+#      bin/release-gem [--dry-run]
 #
 # DESCRIPTION
-#      Releasing is one `gem build` and one `gem push`. This gem is pure Ruby — the binding
-#      is GObjectIntrospection::Loader reading gst-plugins-base's typelib at require time —
-#      so one artefact serves every platform and there is no per-platform gem to collect.
+#      One gem, one push. This gem is pure Ruby: the binding is
+#      GObjectIntrospection::Loader reading GstPbutils-1.0 at require time, so there
+#      is no extension to compile and no per-platform gem to build.
 #
-#      That is the whole of what this script used to exist to work around. The Rust binding
-#      this repository opened with needed a precompiled gem per platform, built in CI, and a
-#      release meant downloading those artefacts and pushing them alongside the source gem.
-#      None of that applies now, and `gem kit release` applies gates this script would
-#      otherwise have to reimplement: a changelog entry for this version, no deprecation
-#      past its deadline, a clean working tree.
+#      That is a change from what this script used to do. Earlier revisions
+#      bound the library through a Rust crate, so releasing meant publishing a
+#      source gem plus a precompiled gem per platform, downloaded from the
+#      Cross Compile workflow's artifacts. None of that applies now, and the
+#      workflow it read from no longer exists — left as it was, this script
+#      aborted with "no successful cross-compile.yml run found".
 #
-#      So this is a thin wrapper. It checks the local version is ahead of what is published
-#      — the one mistake that cannot be taken back, because a pushed version is pushed —
-#      and then hands over. Arguments are passed straight through, so
-#      `bin/release-gem --dry-run` gets you the gates without the push.
+#      The work is `gem kit release`, which gates (a changelog entry for this
+#      version, no deprecation deadline come due, a clean working tree), builds,
+#      pushes and tags. This script adds the one check gem_kit does not make:
+#      that the local version is ahead of what is already on RubyGems. A pushed
+#      version cannot be taken back, so it is worth failing before the push
+#      rather than after.
+#
+# ENVIRONMENT
+#      Requires a RubyGems API key (~/.gem/credentials) for the push.
 #
 # EXIT STATUS
 #      The bin/release-gem utility exits 0 on success, and >0 if an error occurs.
 #
 # SEE ALSO
-#      bin/test(1), gem(1), AGENTS.md "Release"
+#      bin/test(1), gem(1), "gem kit help", CHANGELOG.md
 #
-# gstreamer_pbutils                      November 3, 2026                      RELEASE-GEM(1)
+# gstreamer_pbutils                           November 3, 2026               RELEASE-GEM(1)
 
 require_relative "../lib/gstreamer_pbutils/version"
 
-gem_name = "gstreamer_pbutils"
-local_version = GstreamerPbutils::VERSION
+GEM_NAME = "gstreamer_pbutils"
+local = GstreamerPbutils::VERSION
+dry_run = ARGV.include?("--dry-run")
 
-puts "Local version: #{local_version}"
+puts "Local version: #{local}"
 
-remote_output = `gem specification #{gem_name} version --remote 2>&1`
-remote_version = $?.success? ? remote_output[/version: (.+)/, 1]&.strip : nil
+# The one mistake that cannot be taken back: a pushed version is pushed.
+remote_output = `gem specification #{GEM_NAME} version --remote 2>&1`
 
-if remote_version
-  puts "Remote version: #{remote_version}"
+if $?.success?
+  remote = remote_output[/version: (.+)/, 1]&.strip
+  puts "Remote version: #{remote}"
 
-  if Gem::Version.new(local_version) <= Gem::Version.new(remote_version)
-    abort "ERROR: Local version (#{local_version}) has not been incremented past remote (#{remote_version})"
+  if remote && Gem::Version.new(local) <= Gem::Version.new(remote)
+    abort "ERROR: local version (#{local}) is not ahead of RubyGems (#{remote})"
   end
 else
-  puts "Gem not yet published remotely, proceeding with first release"
+  puts "Not yet published; this would be the first release."
 end
 
-exec("gem", "kit", "release", *ARGV)
+# Build here as well as in `gem kit release`, because a gemspec that cannot
+# build should fail before anything is pushed, and because the built gem is
+# what you would carry to another machine to release by hand.
+puts "\nBuilding #{GEM_NAME}-#{local}.gem..."
+abort "ERROR: gem build failed" unless system("gem", "build", "#{GEM_NAME}.gemspec")
+
+if dry_run
+  puts "\n--dry-run: built but not pushed. Gates that `gem kit release` would apply:"
+  system("gem", "kit", "release", "--dry-run")
+  exit 0
+end
+
+puts "\nReleasing via gem kit..."
+abort "ERROR: gem kit release failed" unless system("gem", "kit", "release")
+
+puts "\nReleased #{GEM_NAME} #{local}"
